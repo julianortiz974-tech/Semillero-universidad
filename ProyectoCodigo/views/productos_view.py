@@ -17,7 +17,7 @@ class VentanaProductos:
         
         # --- 1. BLOQUEO DE VENTANA (Fijo) ---
         # Impide que el usuario estire la ventana principal
-        self.root.resizable(False, False) 
+        self.root.resizable(True, True) 
         
         # Limpiar la ventana
         for widget in root.winfo_children(): 
