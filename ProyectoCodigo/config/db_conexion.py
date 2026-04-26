@@ -1,5 +1,6 @@
 import mysql.connector
 from mysql.connector import Error
+import mysql.connector.locales.eng.client_error  # <--- AÑADE ESTA LÍNEA MÁGICA
 
 class ConexionDB:
     _instance = None
@@ -19,7 +20,7 @@ class ConexionDB:
                     host="localhost",
                     user="root",
                     password="",
-                    database="sistema_ventas_sena",
+                    database="sistema_kardex_sena",
                     port=3306
                 )
                 if self.conexion.is_connected():

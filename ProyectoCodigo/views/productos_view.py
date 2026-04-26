@@ -1,326 +1,289 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog, filedialog # <-- Añadimos filedialog aquí
-from models.productos import Producto
-from models.categoria import Categoria
-
-# --- NUEVOS IMPORTS PARA EL PDF ---
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
+from tkinter import ttk, messagebox, filedialog
 import os
+import shutil
+from PIL import Image, ImageTk
+from models.modelos import Producto, Categoria
 
 class VentanaProductos:
-    def __init__(self, root, callback_volver):
-        self.root = root
-        self.callback_volver = callback_volver
+    def __init__(self, container):
+        self.container = container
+        self.bg_color = "#F4F6F9"
+        self.primary_color = "#111827" 
         
-        # --- 1. BLOQUEO DE VENTANA (Fijo) ---
-        # Impide que el usuario estire la ventana principal
-        self.root.resizable(True, True) 
-        
-        # Limpiar la ventana
-        for widget in root.winfo_children(): 
+        for widget in self.container.winfo_children(): 
             widget.destroy()
-        
-        self.root.title("Smart Sales - Panel de Inventario")
-        self.root.geometry("1100x700")
-        self.root.configure(bg="#F2E8E4") # Color crema
+            
+        self.ruta_img = os.path.join(os.getcwd(), "assets", "productos")
+        os.makedirs(self.ruta_img, exist_ok=True)
 
-        # --- BARRA SUPERIOR ---
-        top_bar = tk.Frame(root, bg="#712828", height=50)
-        top_bar.pack(fill="x")
-        
-        tk.Button(top_bar, text="⬅", command=self.callback_volver, 
-                  bg="#712828", fg="white", relief="flat", font=("Arial", 18, "bold"), cursor="hand2").pack(side="left", padx=10)
-        
-        tk.Label(top_bar, text="PANEL DE INVENTARIO", font=("Arial", 14, "bold"), 
-                 bg="#712828", fg="white").pack(side="left", padx=5)
+        self._configurar_estilos()
+        self._construir_interfaz()
 
-        # --- CUERPO PRINCIPAL ---
-        main_body = tk.Frame(root, bg="#F2E8E4")
-        main_body.pack(fill="both", expand=True, padx=20, pady=10)
+    def _configurar_estilos(self):
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview", background="white", fieldbackground="white", rowheight=35, borderwidth=0, font=("Segoe UI", 10))
+        style.configure("Treeview.Heading", background="#E2E8F0", font=("Segoe UI", 10, "bold"), borderwidth=0)
+        style.map("Treeview", background=[("selected", "#EFF6FF")], foreground=[("selected", "#111827")])
 
-        # 1. SECCIÓN IZQUIERDA
-        left_panel = tk.Frame(main_body, bg="#F2E8E4", width=220)
-        left_panel.pack(side="left", fill="y", padx=(0, 20))
+    def _construir_interfaz(self):
+        header = tk.Frame(self.container, bg=self.bg_color)
+        header.pack(fill="x", padx=40, pady=(30, 20))
+        tk.Label(header, text="Inventario", font=("Segoe UI", 24, "bold"), bg=self.bg_color, fg="#111827").pack(side="left")
 
-        search_frame = tk.Frame(left_panel, bg="white", bd=1, relief="solid")
-        search_frame.pack(fill="x", pady=(0, 15))
-        tk.Label(search_frame, text="🔍", bg="white").pack(side="left", padx=5)
-        self.ent_buscar = tk.Entry(search_frame, font=("Arial", 10), bd=0)
-        self.ent_buscar.insert(0, "Buscar...")
-        self.ent_buscar.pack(side="left", fill="x", expand=True, padx=5, pady=5)
-        
-        self.ent_buscar.bind("<FocusIn>", lambda e: self.ent_buscar.delete(0, tk.END) if self.ent_buscar.get() == "Buscar..." else None)
+        btn_nuevo = tk.Button(header, text="+ Nuevo", command=self.abrir_formulario, bg=self.primary_color, fg="white", font=("Segoe UI", 10, "bold"), bd=0, padx=20, pady=8, cursor="hand2")
+        btn_nuevo.pack(side="right")
+
+        action_bar = tk.Frame(self.container, bg=self.bg_color)
+        action_bar.pack(fill="x", padx=40, pady=(0, 15))
+
+        search_frame = tk.Frame(action_bar, bg="white", bd=1, relief="solid")
+        search_frame.pack(side="left", fill="x", expand=True, padx=(0, 20))
+        tk.Label(search_frame, text="🔍", bg="white", fg="gray").pack(side="left", padx=10)
+        self.ent_buscar = tk.Entry(search_frame, font=("Segoe UI", 10), bd=0, width=40)
+        self.ent_buscar.insert(0, "Buscar por nombre...")
+        self.ent_buscar.pack(side="left", fill="x", expand=True, pady=8)
+        self.ent_buscar.bind("<FocusIn>", lambda e: self.ent_buscar.delete(0, tk.END) if "Buscar" in self.ent_buscar.get() else None)
         self.ent_buscar.bind("<KeyRelease>", self.buscar_producto)
 
-        cat_box = tk.LabelFrame(left_panel, text="CATEGORIAS", font=("Arial", 10, "bold"), bg="white", padx=10, pady=10)
-        cat_box.pack(fill="both", expand=True)
-        
-        # DEFINIMOS LISTA_CAT ANTES DE CARGARLA
-        self.lista_cat = tk.Listbox(cat_box, font=("Arial", 10), bd=0, highlightthickness=0, selectbackground="#A5525A")
-        self.lista_cat.pack(fill="both", expand=True)
-        self.lista_cat.bind("<<ListboxSelect>>", self.filtrar_por_categoria)
+        tk.Button(action_bar, text="Editar", command=lambda: self.abrir_formulario(editar=True), bg="white", fg="#111827", bd=1, relief="solid", font=("Segoe UI", 10), padx=15).pack(side="right", padx=5)
+        tk.Button(action_bar, text="Eliminar", command=self.eliminar_producto, bg="#FEE2E2", fg="#EF4444", bd=0, font=("Segoe UI", 10), padx=15).pack(side="right", padx=5)
 
-        cat_btns = tk.Frame(cat_box, bg="white")
-        cat_btns.pack(fill="x", pady=(10, 0))
-        tk.Button(cat_btns, text="NUEVA", command=self.añadir_categoria, bg="#A5525A", fg="white", font=("Arial", 8, "bold")).pack(side="left", expand=True, fill="x", padx=2)
-        tk.Button(cat_btns, text="BORRAR", command=self.eliminar_categoria, bg="#A5525A", fg="white", font=("Arial", 8, "bold")).pack(side="left", expand=True, fill="x", padx=2)
+        table_frame = tk.Frame(self.container, bg="white", bd=1, relief="solid")
+        table_frame.pack(fill="both", expand=True, padx=40, pady=(0, 30))
 
-        # 2. SECCIÓN DERECHA
-        right_panel = tk.Frame(main_body, bg="#F2E8E4")
-        right_panel.pack(side="right", fill="both", expand=True)
-
-        action_bar = tk.Frame(right_panel, bg="#F2E8E4")
-        action_bar.pack(fill="x", pady=(0, 15))
+        columnas = ("ID", "Producto", "Categoría", "Costo", "Und", "Stock", "Estado")
+        self.tabla = ttk.Treeview(table_frame, columns=columnas, show="headings")
         
-        tk.Button(action_bar, text="AÑADIR PRODUCTO", command=self.abrir_formulario_producto, 
-                  bg="#A5525A", fg="white", font=("Arial", 10, "bold"), padx=15, pady=5).pack(side="left")
-        
-        tk.Button(action_bar, text="EDITAR", command=self.abrir_formulario_editar, 
-                  bg="#A5525A", fg="white", font=("Arial", 10, "bold"), padx=25, pady=5).pack(side="left", padx=15)
-        
-        tk.Button(action_bar, text="ELIMINAR SELECCIONADO", command=self.eliminar_producto, 
-                  bg="#A5525A", fg="white", font=("Arial", 10, "bold"), padx=15, pady=5).pack(side="left")
-
-        # --- TABLA CON COLUMNAS FIJAS ---
-        # Definimos self.tabla antes de cargar productos
-        self.tabla = ttk.Treeview(right_panel, columns=("ID", "Producto", "Precio", "Stock", "Categoria", "Desc"), show="headings")
-        for col in ["ID", "Producto", "Precio", "Stock", "Categoria"]:
+        anchos = {"ID": 40, "Producto": 250, "Categoría": 150, "Costo": 80, "Und": 50, "Stock": 60, "Estado": 100}
+        for col in columnas:
             self.tabla.heading(col, text=col.upper())
-            # FIX: Quitamos resizable=False porque no es una opción válida para .column() en tk estándar
-            self.tabla.column(col, anchor="center", width=120, stretch=tk.NO)
+            self.tabla.column(col, anchor="center", width=anchos[col])
         
-        self.tabla.column("Desc", width=0, stretch=tk.NO)
-        self.tabla.pack(fill="both", expand=True)
+        scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.tabla.yview)
+        self.tabla.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        self.tabla.pack(side="left", fill="both", expand=True, padx=5, pady=5)
 
-        # --- VÍNCULO PARA DOBLE CLIC ---
-        self.tabla.bind("<Double-1>", self.ver_detalles_producto)
+        self.tabla.tag_configure('critico', background='#FEF2F2', foreground='#991B1B')
+        self.tabla.tag_configure('optimo', background='white')
 
-        tk.Button(right_panel, text="REPORTE", command=self.generar_reporte, 
-                  bg="#A5525A", fg="white", font=("Arial", 10, "bold"), padx=20).pack(side="right", pady=10)
-
-        # AL FINAL CARGAMOS LOS DATOS (Ahora que ya existen los widgets tabla y lista_cat)
         self.cargar_categorias()
         self.cargar_productos_total()
 
-    # ==========================================
-    # --- MÉTODOS DE APOYO ---
-    # ==========================================
+    def abrir_formulario(self, editar=False):
+        if editar and not self.tabla.selection():
+            return messagebox.showwarning("Aviso", "Selecciona un producto de la tabla para editar.")
 
-    def crear_input(self, ventana, texto):
-        tk.Label(ventana, text=texto, bg="white", font=("Arial", 10)).pack(pady=(10,0))
-        e = tk.Entry(ventana, font=("Arial", 11), bd=1, relief="solid")
-        e.pack(pady=5, padx=30, fill="x")
-        return e
+        self.form = tk.Toplevel(self.container)
+        self.form.geometry("650x450")
+        self.form.title("Nuevo Producto" if not editar else "Editar Producto")
+        self.form.config(bg="white")
+        self.form.grab_set()
+        self.form.resizable(False, False)
 
-    def ver_detalles_producto(self, event):
-        item = self.tabla.selection()
-        if not item: return
-        valores = self.tabla.item(item)['values']
-        nombre = valores[1]
-        descripcion = valores[5] if valores[5] else "Sin descripción."
-        messagebox.showinfo(f"Detalles de {nombre}", f"DESCRIPCIÓN:\n\n{descripcion}")
+        # 1. Traer categorías actualizadas
+        from models.modelos import Categoria, Producto
+        self.lista_categorias = Categoria.obtener_todas()
+        nombres_cat = [c['nombre_categoria'] for c in self.lista_categorias]
 
-    def actualizar_tabla(self, lista):
-        for item in self.tabla.get_children(): self.tabla.delete(item)
-        for p in lista:
-            self.tabla.insert("", "end", values=(
-                p['id_producto'], p['nombre'], f"${p['precio']}", p['stock'], 
-                p['nombre_categoria'] if p['nombre_categoria'] else "None", p.get('descripcion', "")))
+        self.img_path_var = tk.StringVar(value="")
+        p_id = p_nom = p_desc = p_cost = p_sto = p_min = p_img = ""
+        p_und = "Unidad (und)"
+        p_cat_nombre = "" # Para preseleccionar si estamos editando
+        
+        if editar:
+            item = self.tabla.selection()[0]
+            val = self.tabla.item(item)['values']
+            p_id = val[0]
+            for p in Producto.obtener_todos():
+                if p['id_producto'] == p_id:
+                    p_nom = p['nombre']
+                    p_desc = p['descripcion']
+                    p_cost = p['costo']
+                    p_und = p['unidad']
+                    p_sto = p['stock']
+                    p_min = p['stock_minimo']
+                    p_img = p['imagen_path']
+                    p_cat_nombre = p['nombre_categoria'] # Asumimos que la consulta trae el nombre
+                    self.img_path_var.set(p_img if p_img else "")
+                    break
+
+        tk.Label(self.form, text="Nuevo Producto" if not editar else "Editar Producto", font=("Segoe UI", 16, "bold"), bg="white", fg="#111827").place(x=30, y=20)
+        tk.Button(self.form, text="✕", command=self.form.destroy, bg="white", bd=0, font=("Arial", 14), cursor="hand2").place(x=600, y=20)
+
+        # --- SECCIÓN IMAGEN ---
+        frame_img = tk.Frame(self.form, bg="white", width=180, height=180, highlightbackground="#E2E8F0", highlightthickness=1)
+        frame_img.place(x=30, y=80)
+        frame_img.pack_propagate(False)
+
+        self.lbl_img = tk.Label(frame_img, bg="#F8FAFC", text="📸\nSin Imagen", font=("Segoe UI", 10), fg="#94A3B8")
+        self.lbl_img.pack(fill="both", expand=True)
+        tk.Button(self.form, text="Subir Imagen", command=self.cargar_imagen, bg="white", bd=1, relief="solid", font=("Segoe UI", 9)).place(x=70, y=270)
+
+        if p_img and os.path.exists(p_img):
+            self.mostrar_preview_imagen(p_img)
+
+        # --- SECCIÓN FORMULARIO ---
+        frame_form = tk.Frame(self.form, bg="white")
+        frame_form.place(x=240, y=80, width=380)
+
+        # Fila 1: Nombre
+        tk.Label(frame_form, text="Nombre del Producto *", bg="white", font=("Segoe UI", 9, "bold"), fg="#475569").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        self.en_nom = tk.Entry(frame_form, font=("Segoe UI", 10), bg="#F8FAFC", bd=1, relief="solid", width=42)
+        self.en_nom.insert(0, p_nom); self.en_nom.grid(row=1, column=0, columnspan=2, pady=(0, 15), ipady=5)
+
+        # Fila 2: Categoría (Conectada a la BD) y Unidad
+        tk.Label(frame_form, text="Categoría *", bg="white", font=("Segoe UI", 9, "bold"), fg="#475569").grid(row=2, column=0, sticky="w", pady=(0, 5))
+        tk.Label(frame_form, text="Unidad", bg="white", font=("Segoe UI", 9, "bold"), fg="#475569").grid(row=2, column=1, sticky="w", pady=(0, 5), padx=(10,0))
+        
+        self.cb_categoria = ttk.Combobox(frame_form, values=nombres_cat, state="readonly", width=18)
+        # Si estamos editando y tiene categoría, la ponemos. Si no, ponemos la primera disponible.
+        if editar and p_cat_nombre in nombres_cat:
+            self.cb_categoria.set(p_cat_nombre)
+        elif nombres_cat:
+            self.cb_categoria.current(0)
+        self.cb_categoria.grid(row=3, column=0, pady=(0, 15), ipady=4)
+
+        self.cb_und = ttk.Combobox(frame_form, values=["Unidad (und)", "Kilogramo (kg)", "Litro (l)", "Caja"], state="readonly", width=18)
+        self.cb_und.set(p_und); self.cb_und.grid(row=3, column=1, pady=(0, 15), padx=(10,0), ipady=4)
+
+        # Fila 3: Costo y Stock Mínimo
+        tk.Label(frame_form, text="Costo ($)", bg="white", font=("Segoe UI", 9, "bold"), fg="#475569").grid(row=4, column=0, sticky="w", pady=(0, 5))
+        tk.Label(frame_form, text="Stock Mínimo", bg="white", font=("Segoe UI", 9, "bold"), fg="#475569").grid(row=4, column=1, sticky="w", pady=(0, 5), padx=(10,0))
+
+        self.en_cost = tk.Entry(frame_form, font=("Segoe UI", 10), bg="#F8FAFC", bd=1, relief="solid", width=20)
+        self.en_cost.insert(0, p_cost if p_cost else "0.00"); self.en_cost.grid(row=5, column=0, pady=(0, 15), ipady=5)
+
+        self.en_min = tk.Entry(frame_form, font=("Segoe UI", 10), bg="#F8FAFC", bd=1, relief="solid", width=20)
+        self.en_min.insert(0, p_min if str(p_min) else "5"); self.en_min.grid(row=5, column=1, pady=(0, 15), padx=(10,0), ipady=5)
+
+        # Botones de Acción
+        frame_btns = tk.Frame(self.form, bg="white")
+        frame_btns.place(x=240, y=390, width=380)
+        
+        tk.Button(frame_btns, text="Cancelar", command=self.form.destroy, bg="white", fg="#475569", bd=0, font=("Segoe UI", 10)).pack(side="right", padx=(10, 0))
+        cmd = lambda: self.guardar_producto(editar, p_id)
+        tk.Button(frame_btns, text="Guardar Producto", command=cmd, bg=self.primary_color, fg="white", bd=0, font=("Segoe UI", 10, "bold"), padx=15, pady=5).pack(side="right")
 
     def cargar_categorias(self):
-        self.lista_cat.delete(0, tk.END)
-        self.lista_cat.insert(tk.END, "*VER TODO")
         self.categorias_data = Categoria.obtener_todas()
-        for c in self.categorias_data: self.lista_cat.insert(tk.END, f"-{c['nombre_categoria'].upper()}")
 
     def cargar_productos_total(self):
         self.actualizar_tabla(Producto.obtener_todos())
 
+    def actualizar_tabla(self, lista):
+        for item in self.tabla.get_children(): self.tabla.delete(item)
+        for p in lista:
+            stock = int(p['stock'])
+            minimo = int(p['stock_minimo'])
+            estado = "Crítico" if stock <= minimo else "Óptimo"
+            tag = 'critico' if stock <= minimo else 'optimo'
+
+            self.tabla.insert("", "end", values=(
+                p['id_producto'], p['nombre'], p['nombre_categoria'], f"${p['costo']}", p['unidad'], stock, estado
+            ), tags=(tag,))
+
     def buscar_producto(self, event):
         t = self.ent_buscar.get().lower()
-        if t == "buscar...": return
+        if "buscar" in t: return
+        # Buscamos solo por nombre ahora
         self.actualizar_tabla([p for p in Producto.obtener_todos() if t in str(p['nombre']).lower()])
 
-    def filtrar_por_categoria(self, event):
-        idx = self.lista_cat.curselection()
-        if not idx or idx[0] == 0: self.cargar_productos_total()
-        else:
-            cat_id = self.categorias_data[idx[0]-1]['id_categoria']
-            self.actualizar_tabla(Producto.obtener_por_categoria(cat_id))
-
-    # ==========================================
-    # --- CRUD CATEGORÍAS ---
-    # ==========================================
-
-    def añadir_categoria(self):
-        nom = simpledialog.askstring("Categoría", "Nombre:")
-        if nom:
-            exito, msg = Categoria.insertar(nom.strip())
-            if exito: self.cargar_categorias()
-
-    def eliminar_categoria(self):
-        idx = self.lista_cat.curselection()
-        if not idx or idx[0] == 0: return
-        cat = self.categorias_data[idx[0]-1]
-        # VALIDACIÓN: Tiene datos adentro?
-        if Categoria.contar_productos(cat['id_categoria']) > 0:
-            return messagebox.showerror("Error", "Esta categoría tiene productos. No se puede borrar.")
-        if messagebox.askyesno("Confirmar", f"¿Borrar '{cat['nombre_categoria']}'?"):
-            Categoria.eliminar(cat['id_categoria'])
-            self.cargar_categorias()
-
-    # ==========================================
-    # --- CRUD PRODUCTOS ---
-    # ==========================================
-
-    def abrir_formulario_producto(self):
-        self.form = tk.Toplevel(self.root)
-        self.form.geometry("400x550")
-        self.form.grab_set()
-        self.nom_val = self.crear_input(self.form, "Nombre:")
-        tk.Label(self.form, text="Descripción:").pack()
-        self.des_val = tk.Text(self.form, height=4); self.des_val.pack(padx=30, fill="x")
-        self.pre_val = self.crear_input(self.form, "Precio:")
-        self.sto_val = self.crear_input(self.form, "Stock:")
-        self.cb_cat = ttk.Combobox(self.form, state="readonly")
-        self.cb_cat['values'] = [f"{c['id_categoria']} - {c['nombre_categoria']}" for c in self.categorias_data]
-        self.cb_cat.pack(pady=10)
-        tk.Button(self.form, text="GUARDAR", command=self.guardar_nuevo, bg="#A5525A", fg="white").pack()
-
-    def guardar_nuevo(self):
-        try:
-            p = Producto(self.nom_val.get(), self.des_val.get("1.0", "end-1c"), float(self.pre_val.get()), int(self.sto_val.get()), int(self.cb_cat.get().split(" - ")[0]))
-            p.insertar(); self.form.destroy(); self.cargar_productos_total()
-        except: messagebox.showerror("Error", "Datos inválidos")
-
-    def abrir_formulario_editar(self):
-        item = self.tabla.selection()
-        if not item: return
-        val = self.tabla.item(item)['values']
-        self.form_edit = tk.Toplevel(self.root)
-        self.form_edit.grab_set()
-        self.en_nom = self.crear_input(self.form_edit, "Nombre:"); self.en_nom.insert(0, val[1])
-        tk.Label(self.form_edit, text="Descripción:").pack()
-        self.en_des = tk.Text(self.form_edit, height=4); self.en_des.insert("1.0", val[5]); self.en_des.pack(padx=30, fill="x")
-        self.en_pre = self.crear_input(self.form_edit, "Precio:"); self.en_pre.insert(0, str(val[2]).replace('$', ''))
-        self.en_sto = self.crear_input(self.form_edit, "Stock:"); self.en_sto.insert(0, val[3])
-        self.cb_cat_edit = ttk.Combobox(self.form_edit, state="readonly")
-        self.cb_cat_edit['values'] = [f"{c['id_categoria']} - {c['nombre_categoria']}" for c in self.categorias_data]
-        self.cb_cat_edit.pack(pady=10)
-        tk.Button(self.form_edit, text="ACTUALIZAR", command=lambda: self.guardar_edicion(val[0]), bg="#A5525A", fg="white").pack()
-
-    def guardar_edicion(self, id_p):
-        try:
-            p = Producto(self.en_nom.get(), self.en_des.get("1.0", "end-1c"), float(self.en_pre.get()), int(self.en_sto.get()), int(self.cb_cat_edit.get().split(" - ")[0]), id_p)
-            p.actualizar(); self.form_edit.destroy(); self.cargar_productos_total()
-        except: messagebox.showerror("Error", "Revisa los campos")
-
-    def eliminar_producto(self):
-        item = self.tabla.selection()
-        if item:
-            id_p = self.tabla.item(item)['values'][0]
-            if messagebox.askyesno("Borrar", "¿Eliminar físicamente de la BD?"):
-                Producto.eliminar(id_p); self.cargar_productos_total()
-    
-    def generar_reporte(self):
-        """Genera un reporte PDF profesional con logo, datos de empresa y productos"""
-        from models.empresa import Empresa
-        from reportlab.platypus import Image, SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib import colors
-        from reportlab.lib.styles import getSampleStyleSheet
-        import os
-
-        # 1. OBTENER DATOS (Empresa y Productos)
-        datos_e = Empresa.obtener_datos()
-        
-        idx = self.lista_cat.curselection()
-        if not idx or idx[0] == 0:
-            cat_nombre = "Todos los Productos"
-            productos = Producto.obtener_todos()
-        else:
-            cat = self.categorias_data[idx[0]-1]
-            cat_nombre = cat['nombre_categoria']
-            productos = Producto.obtener_por_categoria(cat['id_categoria'])
-
-        if not productos:
-            return messagebox.showwarning("Aviso", f"No hay productos en '{cat_nombre}'.")
-
-        # 2. SELECCIONAR RUTA DE GUARDADO
-        ruta_guardado = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("Archivos PDF", "*.pdf")],
-            title="Guardar Reporte de Inventario",
-            initialfile=f"Reporte_{cat_nombre.replace(' ', '_')}.pdf"
-        )
-        if not ruta_guardado: return
-
-        # 3. CONSTRUCCIÓN DEL DOCUMENTO
-        try:
-            doc = SimpleDocTemplate(ruta_guardado, pagesize=letter)
-            elementos = []
-            estilos = getSampleStyleSheet()
-
-            # --- ENCABEZADO: LOGO + INFO EMPRESA ---
-            if datos_e:
-                # Intentamos cargar el logo si existe
-                if datos_e['ruta_logo'] and os.path.exists(datos_e['ruta_logo']):
-                    img_logo = Image(datos_e['ruta_logo'], width=70, height=70)
-                    # Tabla para alinear Logo (Izquierda) e Info (Derecha)
-                    data_header = [[
-                        img_logo, 
-                        Paragraph(f"<font size=14><b>{datos_e['nombre']}</b></font><br/>"
-                                  f"NIT: {datos_e['nit']}<br/>"
-                                  f"Dirección: {datos_e['direccion']}<br/>"
-                                  f"Tel: {datos_e['telefono']} | {datos_e['correo']}", estilos['Normal'])
-                    ]]
-                    header_tab = Table(data_header, colWidths=[100, 350])
-                else:
-                    # Si no hay logo, solo mostramos el texto
-                    data_header = [[Paragraph(f"<font size=16><b>{datos_e['nombre']}</b></font><br/>"
-                                              f"NIT: {datos_e['nit']} | Tel: {datos_e['telefono']}", estilos['Normal'])]]
-                    header_tab = Table(data_header, colWidths=[450])
-                
-                header_tab.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
-                elementos.append(header_tab)
-                elementos.append(Spacer(1, 20))
-
-            # TÍTULO DEL REPORTE
-            elementos.append(Paragraph(f"<u>INVENTARIO DETALLADO: {cat_nombre.upper()}</u>", estilos['Heading2']))
-            elementos.append(Spacer(1, 15))
-
-            # --- TABLA DE DATOS ---
-            data_body = [["ID", "PRODUCTO", "PRECIO", "STOCK", "CATEGORÍA"]]
-            for p in productos:
-                data_body.append([
-                    str(p['id_producto']),
-                    p['nombre'],
-                    f"${p['precio']}",
-                    str(p['stock']),
-                    p['nombre_categoria'] if p['nombre_categoria'] else "N/A"
-                ])
-
-            # Estilo de la tabla (Colores Smart Sales)
-            tabla_prod = Table(data_body, colWidths=[40, 180, 80, 60, 110])
-            tabla_prod.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#712828")), # Guinda
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#F2E8E4")), # Crema
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
-            ]))
-            elementos.append(tabla_prod)
-
-            # 4. GENERAR ARCHIVO
-            doc.build(elementos)
+    def cargar_imagen(self):
+        ruta = filedialog.askopenfilename(filetypes=[("Imágenes", "*.png *.jpg *.jpeg")])
+        if ruta:
+            nombre_archivo = os.path.basename(ruta)
             
-            if messagebox.askyesno("Éxito", "PDF generado. ¿Deseas abrirlo?"):
-                os.startfile(ruta_guardado)
+            # 1. Calculamos la ruta base real (subiendo un nivel desde la carpeta views)
+            directorio_base = os.path.dirname(os.path.dirname(__file__))
+            
+            # 2. Definimos la carpeta exacta donde deben ir las fotos de productos
+            carpeta_destino = os.path.join(directorio_base, "assets", "productos")
+            
+            # 3. ¡EL TRUCO MÁGICO! Le decimos a Python que cree la carpeta si no existe
+            os.makedirs(carpeta_destino, exist_ok=True)
+            
+            # 4. Pegamos la imagen en el destino seguro
+            destino = os.path.join(carpeta_destino, nombre_archivo)
+            shutil.copy(ruta, destino)
+            
+            # 5. Guardamos la ruta en la variable y actualizamos la vista
+            self.imagen_path_var.set(destino)
+            self.mostrar_preview(destino)
+            messagebox.showinfo("Éxito", "Imagen cargada correctamente para este producto.")
 
-        except Exception as e:
-            messagebox.showerror("Error", f"Fallo al crear PDF: {e}")
+    def mostrar_preview(self, ruta):
+        try:
+            img = Image.open(ruta)
+            img = img.resize((178, 178))
+            self.img_tk = ImageTk.PhotoImage(img)
+            self.lbl_img.config(image=self.img_tk, text="")
+        except:
+            pass
+
+    def guardar_producto(self, editar=False, p_id=None):
+        nombre = self.en_nom.get().strip()
+        costo = self.en_cost.get().strip()
+        minimo = self.en_min.get().strip()
+        unidad = self.cb_und.get()
+        img_path = self.img_path_var.get()
+        
+        # --- PROCESAR LA CATEGORÍA (Mapeo Relacional) ---
+        nombre_cat_seleccionada = self.cb_categoria.get()
+        id_cat_final = None
+
+        for c in self.lista_categorias:
+            if c['nombre_categoria'] == nombre_cat_seleccionada:
+                id_cat_final = c['id_categoria']
+                break
+
+        if not nombre or not id_cat_final:
+            return messagebox.showerror("Error", "El nombre y la categoría son campos obligatorios.")
+
+        try:
+            costo_float = float(costo)
+            minimo_int = int(minimo)
+        except ValueError:
+            return messagebox.showerror("Error", "Costo y Stock Mínimo deben ser valores numéricos válidos.")
+
+        from models.modelos import Producto
+        
+        # En la creación inicial, el stock siempre es 0 (se llena luego con un movimiento de Entrada)
+        # La descripción la dejamos vacía por ahora ya que la quitamos del form visual para simplificar
+        p = Producto(nombre, "", costo_float, unidad, 0, minimo_int, img_path, id_cat_final, p_id)
+
+        exito = p.actualizar() if editar else p.insertar()
+        
+        if exito:
+            self.form.destroy()
+            self.cargar_productos_total() # Refresca la tabla
+            messagebox.showinfo("Éxito", "Producto guardado correctamente.")
+        else:
+            messagebox.showerror("Error", "Ocurrió un error al intentar guardar en la base de datos.")
+    def eliminar_producto(self):
+        # 1. Validar que haya algo seleccionado
+        seleccion = self.tabla.selection()
+        if not seleccion:
+            messagebox.showwarning("Atención", "Por favor, selecciona un producto de la tabla.")
+            return
+
+        # 2. Tomar el elemento seleccionado
+        item = seleccion[0]
+        
+        # 3. Extraer ID y Nombre (¡Sintaxis corregida sin el [0] extra!)
+        id_p = self.tabla.item(item)['values'][0]
+        nombre_p = self.tabla.item(item)['values'][1]
+
+        # 4. Confirmar con el usuario
+        if messagebox.askyesno("Confirmar", f"¿Estás seguro de eliminar '{nombre_p}'?\nNota: Solo se pueden eliminar productos sin historial de movimientos."):
+            from models.modelos import Producto
+            
+            # 5. Intentar eliminar en la base de datos
+            if Producto.eliminar(id_p):
+                self.cargar_datos() # Refresca la tabla
+                messagebox.showinfo("Éxito", "Producto eliminado correctamente.")
+            else:
+                # Aquí entra la protección de tu Kardex
+                messagebox.showerror("Acción Denegada", "No se puede eliminar este producto.\n\nEl sistema lo protege porque ya cuenta con Entradas o Salidas registradas en el historial del Kardex.")

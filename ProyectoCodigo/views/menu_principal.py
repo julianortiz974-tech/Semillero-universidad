@@ -1,214 +1,282 @@
 import tkinter as tk
-from tkinter import messagebox
-
-# ── Paleta de colores ──────────────────────────────────────────────────────────
-COLORS = {
-    "bg_top":       "#712828",
-    "bg_bottom":    "#d4847a",
-    "text_light":   "#e0e0d5",
-    "btn_1":        "#C48B7A",
-    "btn_2":        "#CA9788",
-    "btn_3":        "#D8B6AC",
-    "btn_4":        "#D8B6AC",
-    "btn_hover_bg": "#e0e0d5",
-    "logout_bg":    "#5a1e1e",
-    "logout_hover": "#7a2828",
-}
-
-FONT_LOGO    = ("Impact", 110)
-FONT_INFO    = ("Segoe UI", 11, "bold")
-FONT_BTN     = ("Segoe UI", 14, "bold")
-FONT_LOGOUT  = ("Segoe UI", 10, "bold")
+from tkinter import ttk, messagebox
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from config.db_conexion import ConexionDB
 
 class MenuPrincipal:
-    def __init__(self, root: tk.Tk, usuario_actual: dict, logout_callback):
+    def __init__(self, root, usuario, logout_callback):
         self.root = root
-        self.usuario = usuario_actual
+        self.usuario = usuario
         self.logout_callback = logout_callback
-        self.nombre_usuario = usuario_actual["nombre"]
-        self.rol_usuario    = usuario_actual["rol"]
-        
-        self._limpiar_ventana()
-        self.root.title(f"Smart Sales – {self.nombre_usuario} ({self.rol_usuario})")
-        self.root.geometry("1100x700")
+        self.db = ConexionDB()
 
-        # Contenedor de botones para no recrearlos
-        self.botones_modulos = []
-        self.btn_logout = None
-        
-        self._construir_ui()
-        
-    def _redibujar(self):
-        """Método ÚNICO para actualizar todo el diseño al redimensionar."""
-        
-        # 1. Escudo de seguridad: Si el canvas ya no existe, no hacemos nada
-        if not self.canvas.winfo_exists():
-            return
+        self.root.title(f"Smart Sales | Usuario: {self.usuario.get('nombre', 'Admin')}")
+        self.root.geometry("1200x800")
+        self.root.minsize(1000, 600)
+        self.root.config(bg="#F4F6F9")
 
-        w = self.canvas.winfo_width()
-        h = self.canvas.winfo_height()
-        
-        # Evitar cálculos si la ventana es demasiado pequeña (como al minimizar)
-        if w < 10 or h < 10: 
-            return
+        for widget in root.winfo_children():
+            widget.destroy()
 
-        # 2. LIMPIEZA: Borramos solo los dibujos, NO los botones (widgets)
-        self.canvas.delete("fondo_diseno")
+        # Paleta de colores
+        self.bg_sidebar   = "#FFFFFF"
+        self.bg_content   = "#F4F6F9"
+        self.color_texto  = "#333333"
+        self.color_hover  = "#E2E8F0"
+        self.color_activo = "#4361EE"
+        self.texto_activo = "#FFFFFF"
 
-        # 3. DIBUJO DEL FONDO (Degradado)
-        self._dibujar_degradado(w, h)
+        # Estructura principal
+        self.sidebar = tk.Frame(self.root, bg=self.bg_sidebar, width=250,
+                                highlightbackground="#E2E8F0", highlightthickness=1)
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
 
-        # 4. DIBUJO DE LA BARRA SUPERIOR
-        self.canvas.create_rectangle(
-            0, 0, w, 55, 
-            fill="#4a1818", outline="", tags="fondo_diseno"
-        )
+        self.content_frame = tk.Frame(self.root, bg=self.bg_content)
+        self.content_frame.pack(side="right", fill="both", expand=True)
 
-        # 5. ACTUALIZACIÓN DE TEXTOS (Info de sesión y Logo)
-        info = f"Usuario: {self.nombre_usuario}  |  Rol: {self.rol_usuario}"
-        self.canvas.create_text(
-            20, 27, text=info, font=FONT_INFO, 
-            fill=COLORS["text_light"], anchor="w", tags="fondo_diseno"
-        )
-        
-        cy = h // 2
-        self.canvas.create_text(
-            w * 0.08, cy - 80, text="SMART", 
-            font=FONT_LOGO, fill=COLORS["text_light"], anchor="w", tags="fondo_diseno"
-        )
-        self.canvas.create_text(
-            w * 0.08, cy + 60, text="SALES", 
-            font=FONT_LOGO, fill=COLORS["text_light"], anchor="w", tags="fondo_diseno"
-        )
+        self._construir_sidebar()
+        self.abrir_dashboard()
 
-        # 6. REPOSICIONAMIENTO DE BOTONES (Sin volver a crearlos)
-        # Mover Botón Logout
-        self.canvas.coords(self.logout_id, w - 20, 27)
-        self.canvas.itemconfigure(self.logout_id, state='normal')
+    # SIDEBAR
 
-        # Mover Botones de Módulos
-        bx = w * 0.72
-        gap = 115
-        # Calculamos el inicio para que el grupo de botones siempre esté centrado verticalmente
-        by_start = cy - (len(self.botones_modulos) * gap) // 2 + 50
-        
-        for i, window_id in enumerate(self.botones_modulos):
-            self.canvas.coords(window_id, bx, by_start + i * gap)
-            self.canvas.itemconfigure(window_id, state='normal')
-        
+    def _construir_sidebar(self):
+        # Logo
+        logo_frame = tk.Frame(self.sidebar, bg=self.bg_sidebar)
+        logo_frame.pack(fill="x", pady=20)
+        tk.Label(logo_frame, text="📦 SMART", font=("Segoe UI", 18, "bold"),
+                 bg=self.bg_sidebar, fg=self.color_activo).pack(side="left", padx=(20, 5))
+        tk.Label(logo_frame, text="KARDEX", font=("Segoe UI", 18),
+                 bg=self.bg_sidebar, fg=self.color_texto).pack(side="left")
 
-    def _limpiar_ventana(self):
-        for w in self.root.winfo_children():
-            w.destroy()
+        tk.Frame(self.sidebar, bg="#E2E8F0", height=1).pack(fill="x", padx=20, pady=10)
 
-    def _construir_ui(self):
-        
-        self.canvas = tk.Canvas(self.root, highlightthickness=0)
-        self.canvas.pack(fill="both", expand=True)
+        self.botones = {}
 
-        # 1. CREAR los widgets una sola vez
-        self._inicializar_widgets()
-
-        # 2. VINCULAR el evento AL CANVAS directamente
-        # Al hacerlo al canvas, evitamos que el root intente redibujar 
-        # cuando el menú ya no existe.
-        self.canvas.bind("<Configure>", lambda e: self._redibujar())
-        
-        # Pequeño delay para el primer dibujado
-        self.root.after(100, self._redibujar)
-
-    def _inicializar_widgets(self):
-        """Crea los objetos de botón pero no los posiciona aún."""
-        # Botón Logout
-        self.btn_logout = tk.Button(
-            self.canvas, text="Cerrar Sesión",
-            command=self._confirmar_logout,
-            font=FONT_LOGOUT, bg=COLORS["logout_bg"], fg=COLORS["text_light"],
-            activebackground=COLORS["logout_hover"], activeforeground=COLORS["text_light"],
-            relief="flat", cursor="hand2", padx=12, pady=4
-        )
-        self.btn_logout.bind("<Enter>", lambda e: self.btn_logout.config(bg=COLORS["logout_hover"]))
-        self.btn_logout.bind("<Leave>", lambda e: self.btn_logout.config(bg=COLORS["logout_bg"]))
-
-        # Botones de módulos
+        # Módulos principales (todos los usuarios)
         modulos = [
-            ("INVENTARIO",   COLORS["btn_1"], self.abrir_inventario),
-            ("VENTAS",       COLORS["btn_2"], self.abrir_ventas),
-            ("CLIENTES",     COLORS["btn_3"], self.abrir_clientes),
+            ("📊", "Dashboard",    self.abrir_dashboard),
+            ("🏷️", "Productos",    self.abrir_productos),
+            ("📂", "Categorías",   self.abrir_categorias),
+            ("🔄", "Movimientos",  self.abrir_movimientos),
+            ("⚠️", "Alertas",      self.abrir_alertas),
+            ("🏢", "Proveedores",  self.abrir_proveedores),
         ]
-        
-        if self.rol_usuario == "ADMIN":
-            modulos.append(("CONFIGURACIÓN", COLORS["btn_4"], self.abrir_configuracion))
 
-        for texto, color, cmd in modulos:
-            btn = tk.Button(
-                self.canvas, text=texto, command=cmd,
-                font=FONT_BTN, bg=color, fg="white",
-                activebackground=COLORS["btn_hover_bg"], activeforeground=color,
-                width=20, height=2, relief="flat", cursor="hand2"
-            )
-            # Efecto hover corregido (usando clausura para mantener el color)
-            btn.bind("<Enter>", lambda e, b=btn, c=color: b.config(bg=COLORS["btn_hover_bg"], fg=c))
-            btn.bind("<Leave>", lambda e, b=btn, c=color: b.config(bg=c, fg="white"))
-            
-            # Guardamos el ID de la ventana del canvas para moverlo luego
-            window_id = self.canvas.create_window(0, 0, window=btn, state='hidden')
-            self.botones_modulos.append(window_id)
+        for icono, texto, comando in modulos:
+            btn = self._crear_boton_menu(icono, texto, comando)
+            btn.pack(fill="x", padx=10, pady=2)
+            self.botones[texto] = btn
 
-        # ID del botón logout
-        self.logout_id = self.canvas.create_window(0, 0, window=self.btn_logout, anchor="e", state='hidden')
+        # Empujar sección inferior
+        tk.Frame(self.sidebar, bg=self.bg_sidebar).pack(fill="both", expand=True)
+        tk.Frame(self.sidebar, bg="#E2E8F0", height=1).pack(fill="x", padx=20, pady=10)
 
-    def _dibujar_degradado(self, w, h):
-        r1, g1, b1 = 0x71, 0x28, 0x28
-        r2, g2, b2 = 0xd4, 0x84, 0x7a
-        steps = 30 # Reducido para mejor rendimiento
-        step_h = h / steps
-        for i in range(steps):
-            t = i / steps
-            color = f"#{int(r1+(r2-r1)*t):02x}{int(g1+(g2-g1)*t):02x}{int(b1+(b2-b1)*t):02x}"
-            self.canvas.create_rectangle(0, i*step_h, w, (i+1)*step_h, fill=color, outline=color, tags="fondo_diseno")
+        # Módulos solo para ADMIN
+        if self.usuario.get("rol") == "ADMIN":
+            for icono, texto, comando in [
+                ("👥", "Usuarios",       self.abrir_usuarios),
+                ("⚙️", "Configuración",  self.abrir_configuracion),
+            ]:
+                btn = self._crear_boton_menu(icono, texto, comando)
+                btn.pack(fill="x", padx=10, pady=2)
+                self.botones[texto] = btn
 
-    def _confirmar_logout(self):
-        if messagebox.askyesno("Cerrar sesión", "¿Deseas cerrar la sesión actual?"):
-            # IMPORTANTE: Desvincular el evento antes de salir para evitar errores de memoria
-            self.root.unbind("<Configure>", self._bind_id)
-            self.logout_callback()
+        # Cerrar sesión
+        btn_salir = self._crear_boton_menu("🚪", "Cerrar Sesión",
+                                           self.logout_callback, fg_color="#E63946")
+        btn_salir.pack(fill="x", padx=10, pady=(2, 20))
 
-    # --- Navegación ---
-    def abrir_inventario(self):
-        try:
-            # Antes de irnos, ocultamos los widgets para evitar parpadeos
-            self.canvas.pack_forget() 
-            
-            from views.productos_view import VentanaProductos
-            VentanaProductos(self.root, self.volver_menu)
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo abrir Inventario: {e}")
+    def _crear_boton_menu(self, icono, texto, comando, fg_color=None):
+        color_fuente = fg_color if fg_color else self.color_texto
+        btn = tk.Button(
+            self.sidebar,
+            text=f"  {icono}   {texto}", anchor="w",
+            font=("Segoe UI", 11, "bold"),
+            bg=self.bg_sidebar, fg=color_fuente,
+            bd=0, relief="flat", cursor="hand2",
+            command=lambda t=texto, c=comando: self._seleccionar_menu(t, c),
+            activebackground=self.color_hover,
+            padx=20, pady=10
+        )
+        btn.bind("<Enter>", lambda e, b=btn, c=color_fuente: self._on_enter(b, c))
+        btn.bind("<Leave>", lambda e, b=btn, c=color_fuente: self._on_leave(b, c))
+        return btn
 
-    def volver_menu(self):
-        """Regresa al menú refrescando la vista."""
-        # Al usar __init__ de nuevo, se recrea todo el objeto limpiamente
-        self.__init__(self.root, self.usuario, self.logout_callback)
+    def _on_enter(self, btn, base_fg):
+        if btn.cget("bg") != self.color_activo:
+            btn.config(bg=self.color_hover)
 
-    def abrir_ventas(self):
-        try:
-            from views.ventas_view import VentanaVentas
-            VentanaVentas(self.root, self.volver_menu)
-        except Exception as e: messagebox.showerror("Error", f"No disponible: {e}")
+    def _on_leave(self, btn, base_fg):
+        if btn.cget("bg") != self.color_activo:
+            btn.config(bg=self.bg_sidebar, fg=base_fg)
 
-    def abrir_clientes(self):
-        try:
-            from views.clientes_view import VentanaClientes
-            VentanaClientes(self.root, self.volver_menu)
-        except Exception as e: messagebox.showerror("Error", f"No disponible: {e}")
+    def _seleccionar_menu(self, texto_modulo, comando):
+        for nombre, btn in self.botones.items():
+            color_original = "#E63946" if nombre == "Cerrar Sesión" else self.color_texto
+            btn.config(bg=self.bg_sidebar, fg=color_original)
+
+        if texto_modulo in self.botones and texto_modulo != "Cerrar Sesión":
+            self.botones[texto_modulo].config(bg=self.color_activo, fg=self.texto_activo)
+
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()
+
+        comando()
+
+    # DASHBOARD
+
+    def abrir_dashboard(self):
+        header = tk.Frame(self.content_frame, bg=self.bg_content)
+        header.pack(fill="x", padx=30, pady=(30, 10))
+
+        tk.Label(header, text="Dashboard Principal", font=("Segoe UI", 20, "bold"),
+                 bg=self.bg_content, fg="#1E293B").pack(side="left")
+
+        combo_fecha = ttk.Combobox(header, values=["Hoy", "Esta Semana", "Este Mes", "Este Año"],
+                                   state="readonly", width=15)
+        combo_fecha.set("Este Mes")
+        combo_fecha.pack(side="right", pady=5)
+        tk.Label(header, text="Filtrar por:", bg=self.bg_content,
+                 font=("Segoe UI", 10)).pack(side="right", padx=10)
+
+        cards_frame = tk.Frame(self.content_frame, bg=self.bg_content)
+        cards_frame.pack(fill="x", padx=30, pady=10)
+        self._render_cards(cards_frame)
+
+        chart_frame = tk.Frame(self.content_frame, bg="#FFFFFF", bd=0,
+                               highlightbackground="#E2E8F0", highlightthickness=1)
+        chart_frame.pack(fill="both", expand=True, padx=30, pady=20)
+        self._render_chart(chart_frame)
+
+    def _crear_tarjeta(self, parent, titulo, valor, icono, color_palo):
+        card = tk.Frame(parent, bg="#FFFFFF", padx=20, pady=20,
+                        highlightbackground="#E2E8F0", highlightthickness=1)
+        card.pack(side="left", fill="both", expand=True, padx=5)
+
+        palo = tk.Frame(card, bg=color_palo, width=4)
+        palo.place(relx=0, rely=0, relheight=1)
+
+        tk.Label(card, text=icono,  font=("Segoe UI", 20), bg="#FFFFFF").pack(anchor="w")
+        tk.Label(card, text=titulo, font=("Segoe UI", 10), bg="#FFFFFF", fg="#64748B").pack(anchor="w", pady=(5, 0))
+        tk.Label(card, text=valor,  font=("Segoe UI", 16, "bold"), bg="#FFFFFF", fg="#1E293B").pack(anchor="w")
+
+    def _render_cards(self, cards_frame):
+        cursor = self.db.obtener_cursor()
+        valor_total = 0.0; alertas = 0; total_p = 0; movs = 0
+
+        if cursor:
+            try:
+                cursor.execute("SELECT COUNT(*) as total FROM productos WHERE stock <= stock_minimo")
+                res = cursor.fetchone()
+                if res: alertas = res["total"]
+
+                cursor.execute("SELECT COUNT(*) as total, SUM(costo * stock) as valor_total FROM productos")
+                res = cursor.fetchone()
+                if res:
+                    total_p     = res["total"] or 0
+                    valor_total = res["valor_total"] or 0.0
+
+                cursor.execute("SELECT COUNT(*) as total FROM movimientos_inventario WHERE MONTH(fecha)=MONTH(CURRENT_DATE())")
+                res = cursor.fetchone()
+                if res: movs = res["total"]
+            except Exception as e:
+                print("Dashboard cards:", e)
+
+        self._crear_tarjeta(cards_frame, "Valor Inventario", f"${valor_total:,.2f}", "💰", "#10B981")
+        self._crear_tarjeta(cards_frame, "Alertas Stock",    str(alertas),            "⚠️",  "#EF4444")
+        self._crear_tarjeta(cards_frame, "Total Productos",  str(total_p),            "📦", "#4361EE")
+        self._crear_tarjeta(cards_frame, "Movs. del Mes",    str(movs),               "🔄", "#F59E0B")
+
+    def _render_chart(self, chart_frame):
+        cursor = self.db.obtener_cursor()
+        entradas   = [0] * 5
+        salidas    = [0] * 5
+        categorias = ["Mes 1", "Mes 2", "Mes 3", "Mes 4", "Mes Actual"]
+
+        if cursor:
+            try:
+                sql = """
+                    SELECT MONTH(fecha) AS mes, tipo_movimiento, SUM(cantidad) AS total
+                    FROM movimientos_inventario
+                    WHERE fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 5 MONTH)
+                    GROUP BY MONTH(fecha), tipo_movimiento
+                    ORDER BY MONTH(fecha) ASC
+                """
+                cursor.execute(sql)
+                resultados = cursor.fetchall()
+
+                if resultados:
+                    meses_encontrados = []
+                    for row in resultados:
+                        if row["mes"] not in meses_encontrados:
+                            meses_encontrados.append(row["mes"])
+
+                    nombres = {1:"Ene",2:"Feb",3:"Mar",4:"Abr",5:"May",6:"Jun",
+                               7:"Jul",8:"Ago",9:"Sep",10:"Oct",11:"Nov",12:"Dic"}
+                    categorias = [nombres.get(m, str(m)) for m in meses_encontrados]
+                    entradas   = [0] * len(meses_encontrados)
+                    salidas    = [0] * len(meses_encontrados)
+
+                    for row in resultados:
+                        idx = meses_encontrados.index(row["mes"])
+                        if row["tipo_movimiento"] == "ENTRADA":
+                            entradas[idx] = int(row["total"])
+                        else:
+                            salidas[idx]  = int(row["total"])
+            except Exception as e:
+                print("Dashboard chart:", e)
+
+        fig, ax = plt.subplots(figsize=(8, 4), dpi=100)
+        fig.patch.set_facecolor("#FFFFFF")
+        width     = 0.35
+        x_indices = range(len(categorias)) if categorias else range(5)
+
+        ax.bar([i - width/2 for i in x_indices], entradas, width, label="Entradas", color="#4361EE", edgecolor="white")
+        ax.bar([i + width/2 for i in x_indices], salidas,  width, label="Salidas",  color="#E63946", edgecolor="white")
+
+        ax.set_title("Flujo de Inventario Mensual", fontsize=12, pad=20,
+                     fontweight="bold", color="#1E293B")
+        ax.set_xticks(x_indices)
+        ax.set_xticklabels(categorias)
+        ax.legend(frameon=False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.set_facecolor("#FFFFFF")
+
+        canvas = FigureCanvasTkAgg(fig, master=chart_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+        plt.close(fig)
+
+    # NAVEGACIÓN A MÓDULOS
+
+    def abrir_productos(self):
+        from views.productos_view import VentanaProductos
+        VentanaProductos(self.content_frame)
+
+    def abrir_movimientos(self):
+        from views.movimientos_view import VentanaMovimientos
+        VentanaMovimientos(self.content_frame)
+
+    def abrir_alertas(self):
+        from views.alertas_view import VentanaAlertas
+        VentanaAlertas(self.content_frame)
+
+    def abrir_proveedores(self):
+        from views.proveedores_view import VentanaProveedores
+        VentanaProveedores(self.content_frame)
+
+    def abrir_usuarios(self):
+        """Solo ADMIN — ya está protegido desde el sidebar."""
+        from views.usuarios_view import VentanaUsuarios
+        VentanaUsuarios(self.content_frame, self.usuario)
 
     def abrir_configuracion(self):
-        try:
-            from views.config_view import VentanaConfig
-            VentanaConfig(self.root, self.volver_menu)
-        except Exception as e: messagebox.showerror("Error", f"No disponible: {e}")
-
-    def volver_menu(self):
-        # Desvinculamos el evento anterior para que no se duplique al reiniciar
-        self.root.unbind("<Configure>", self._bind_id)
-        self.__init__(self.root, self.usuario, self.logout_callback)
+        from views.config_view import VentanaConfig
+        VentanaConfig(self.content_frame, lambda: self._seleccionar_menu("Dashboard", self.abrir_dashboard))
+    
+    def abrir_categorias(self):
+        from views.categorias_view import VentanaCategorias
+        VentanaCategorias(self.content_frame)
