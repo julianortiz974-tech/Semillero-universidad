@@ -78,8 +78,14 @@ class VentanaPortada:
                     lambda e: canvas.itemconfig(win, width=e.width))
         page.bind("<Configure>",
                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind_all("<MouseWheel>",
-                        lambda e: canvas.yview_scroll(-1*(e.delta//120), "units"))
+        def _scroll(event):
+            try:
+                canvas.yview_scroll(-1*(event.delta//120), "units")
+            except Exception:
+                pass
+
+        canvas.bind_all("<MouseWheel>", _scroll)
+        canvas.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
         # ── HERO ──────────────────────────────────────────────────────────
         self._hero(page)

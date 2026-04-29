@@ -262,28 +262,20 @@ class VentanaProductos:
             messagebox.showinfo("Éxito", "Producto guardado correctamente.")
         else:
             messagebox.showerror("Error", "Ocurrió un error al intentar guardar en la base de datos.")
+    
     def eliminar_producto(self):
-        # 1. Validar que haya algo seleccionado
         seleccion = self.tabla.selection()
         if not seleccion:
-            messagebox.showwarning("Atención", "Por favor, selecciona un producto de la tabla.")
+            messagebox.showwarning("Atención", "Selecciona un producto de la tabla.")
             return
 
-        # 2. Tomar el elemento seleccionado
-        item = seleccion[0]
-        
-        # 3. Extraer ID y Nombre (¡Sintaxis corregida sin el [0] extra!)
-        id_p = self.tabla.item(item)['values'][0]
+        item     = seleccion[0]
+        id_p     = self.tabla.item(item)['values'][0]
         nombre_p = self.tabla.item(item)['values'][1]
 
-        # 4. Confirmar con el usuario
-        if messagebox.askyesno("Confirmar", f"¿Estás seguro de eliminar '{nombre_p}'?\nNota: Solo se pueden eliminar productos sin historial de movimientos."):
-            from models.modelos import Producto
-            
-            # 5. Intentar eliminar en la base de datos
-            if Producto.eliminar(id_p):
-                self.cargar_productos_total() # Refresca la tabla
-                messagebox.showinfo("Éxito", "Producto eliminado correctamente.")
-            else:
-                # Aquí entra la protección de tu Kardex
-                messagebox.showerror("Acción Denegada", "No se puede eliminar este producto.\n\nEl sistema lo protege porque ya cuenta con Entradas o Salidas registradas en el historial del Kardex.")
+        if messagebox.askyesno("Confirmar eliminación",
+                            f"¿Estás seguro de que deseas eliminar '{nombre_p}'?\n"
+                            "Esta acción no se puede deshacer."):
+            Producto.eliminar(id_p)
+            self.cargar_productos_total()
+            messagebox.showinfo("Eliminado", f"'{nombre_p}' fue eliminado correctamente.")
