@@ -123,7 +123,7 @@ class VentanaProductos:
         tk.Button(self.form, text="Subir Imagen", command=self.cargar_imagen, bg="white", bd=1, relief="solid", font=("Segoe UI", 9)).place(x=70, y=270)
 
         if p_img and os.path.exists(p_img):
-            self.mostrar_preview_imagen(p_img)
+            self.mostrar_preview(p_img)
 
         # --- SECCIÓN FORMULARIO ---
         frame_form = tk.Frame(self.form, bg="white")
@@ -210,7 +210,7 @@ class VentanaProductos:
             shutil.copy(ruta, destino)
             
             # 5. Guardamos la ruta en la variable y actualizamos la vista
-            self.imagen_path_var.set(destino)
+            self.img_path_var.set(destino)
             self.mostrar_preview(destino)
             messagebox.showinfo("Éxito", "Imagen cargada correctamente para este producto.")
 
@@ -282,7 +282,7 @@ class VentanaProductos:
             
             # 5. Intentar eliminar en la base de datos
             if Producto.eliminar(id_p):
-                self.cargar_datos() # Refresca la tabla
+                self.cargar_productos_total() # Refresca la tabla
                 messagebox.showinfo("Éxito", "Producto eliminado correctamente.")
             else:
                 # Aquí entra la protección de tu Kardex
